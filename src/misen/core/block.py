@@ -1,0 +1,142 @@
+"""Block — the universal building unit of misen.
+
+Every Block is an async function: dict → dict.
+Blocks compose via operators (|, &) and the result is always another Block.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import concurrent.futures
+import inspect
+from abc import ABC, abstractmethod
+from typing import Any, Awaitable, Callable, overload
+
+
+class Block(ABC):
+    """Abstract base for all misen blocks.
+
+    Subclasses must implement ``async run(input) -> dict``.
+    """
+
+    name: str
+    description: str
+
+    def __init__(self, name: str = "", description: str = "") -> None:
+        self.name = name or self.__class__.__name__
+        self.description = description
+
+    # ── execution ────────────────────────────────────────────
+
+    @abstractmethod
+    async def run(self, input: dict[str, Any]) -> dict[str, Any]:
+        """Execute the block. Subclasses must override."""
+        ...
+
+    def run_sync(self, input: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Synchronous convenience wrapper."""
+        coro = self.run(input or {})
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None and loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(asyncio.run, coro).result()
+        return asyncio.run(coro)
+
+    # ── operator sugar ───────────────────────────────────────
+
+    def __or__(self, other: Block) -> Block:
+        """``a | b`` → sequential(a, b). Flattens nested Sequential."""
+        from misen.core.operators import Sequential
+
+        blocks: list[Block] = []
+        for b in (self, other):
+            if isinstance(b, Sequential):
+                blocks.extend(b.blocks)
+            else:
+                blocks.append(b)
+        return Sequential(*blocks)
+
+    def __and__(self, other: Block) -> Block:
+        """``a & b`` → parallel(a, b). Flattens nested Parallel."""
+        from misen.core.operators import Parallel
+
+        blocks: list[Block] = []
+        for b in (self, other):
+            if isinstance(b, Parallel):
+                blocks.extend(b.blocks)
+            else:
+                blocks.append(b)
+        return Parallel(*blocks)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(name={self.name!r})"
+
+
+# ── FunctionBlock ────────────────────────────────────────────
+
+
+class FunctionBlock(Block):
+    """Block wrapping a plain function (sync or async)."""
+
+    def __init__(
+        self,
+        fn: Callable[[dict[str, Any]], dict[str, Any] | Awaitable[dict[str, Any]]],
+        *,
+        name: str = "",
+        description: str = "",
+    ) -> None:
+        super().__init__(
+            name=name or fn.__name__,
+            description=description or fn.__doc__ or "",
+        )
+        self._fn = fn
+        self._is_async = inspect.iscoroutinefunction(fn)
+
+    async def run(self, input: dict[str, Any]) -> dict[str, Any]:
+        if self._is_async:
+            return await self._fn(input)  # type: ignore[misc]
+        return self._fn(input)  # type: ignore[return-value]
+
+
+# ── @tool decorator ──────────────────────────────────────────
+
+_F = Callable[[dict[str, Any]], dict[str, Any] | Awaitable[dict[str, Any]]]
+
+
+@overload
+def tool(fn: _F, /) -> FunctionBlock: ...
+
+
+@overload
+def tool(*, name: str = "", description: str = "") -> Callable[[_F], FunctionBlock]: ...
+
+
+def tool(
+    fn: _F | None = None,
+    *,
+    name: str = "",
+    description: str = "",
+) -> FunctionBlock | Callable[[_F], FunctionBlock]:
+    """Create a Block from a function.
+
+    Usage::
+
+        @tool
+        def my_block(input: dict) -> dict:
+            return {"result": input["value"] + 1}
+
+        @tool(name="custom")
+        async def my_async_block(input: dict) -> dict:
+            return {"result": input["value"] * 2}
+    """
+
+    def wrap(f: _F) -> FunctionBlock:
+        return FunctionBlock(f, name=name, description=description)
+
+    if fn is not None:
+        return wrap(fn)
+    return wrap

@@ -1,0 +1,13 @@
+"""misen exception hierarchy."""
+
+
+class MisenError(Exception):
+    """Base exception for all misen errors."""
+
+
+class BlockError(MisenError):
+    """A block failed during execution."""
+
+
+class MergeConflictError(MisenError):
+    """Parallel blocks produced conflicting output keys."""
