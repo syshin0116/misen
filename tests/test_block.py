@@ -2,7 +2,7 @@
 
 import pytest
 
-from misen import Block, FunctionBlock, tool
+from misen import Block, BlockError, FunctionBlock, tool
 from misen.core.operators import Parallel, Sequential
 
 
@@ -13,7 +13,7 @@ class TestBlockABC:
 
     def test_default_name_is_classname(self):
         class MyBlock(Block):
-            async def run(self, input):
+            async def execute(self, input):
                 return input
 
         b = MyBlock()
@@ -21,11 +21,55 @@ class TestBlockABC:
 
     def test_repr(self):
         class MyBlock(Block):
-            async def run(self, input):
+            async def execute(self, input):
                 return input
 
         b = MyBlock(name="test")
         assert "test" in repr(b)
+
+
+class TestDictContract:
+    async def test_non_dict_input_raises(self):
+        @tool
+        def noop(input: dict) -> dict:
+            return {}
+
+        with pytest.raises(BlockError, match="expected dict input"):
+            await noop.run("not a dict")  # type: ignore[arg-type]
+
+    async def test_non_dict_output_raises(self):
+        @tool
+        def bad(input: dict) -> dict:
+            return None  # type: ignore[return-value]
+
+        with pytest.raises(BlockError, match="expected dict output"):
+            await bad.run({})
+
+    async def test_list_output_raises(self):
+        @tool
+        def bad(input: dict) -> dict:
+            return [1, 2, 3]  # type: ignore[return-value]
+
+        with pytest.raises(BlockError, match="expected dict output"):
+            await bad.run({})
+
+    async def test_exception_wrapped_in_block_error(self):
+        @tool
+        def failing(input: dict) -> dict:
+            raise ValueError("something broke")
+
+        with pytest.raises(BlockError, match="something broke"):
+            await failing.run({})
+
+    async def test_block_error_not_double_wrapped(self):
+        @tool
+        def failing(input: dict) -> dict:
+            from misen.errors import BlockError
+
+            raise BlockError("direct block error")
+
+        with pytest.raises(BlockError, match="direct block error"):
+            await failing.run({})
 
 
 class TestFunctionBlock:

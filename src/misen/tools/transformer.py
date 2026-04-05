@@ -28,5 +28,5 @@ class Transformer(Block):
         self.input_key = input_key
         self.output_key = output_key or input_key
 
-    async def run(self, input: dict[str, Any]) -> dict[str, Any]:
+    async def execute(self, input: dict[str, Any]) -> dict[str, Any]:
         return {self.output_key: self.fn(input[self.input_key])}

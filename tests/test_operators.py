@@ -103,7 +103,9 @@ class TestParallel:
         with pytest.raises(MergeConflictError):
             await parallel(first, second, conflict="error").run({})
 
-    async def test_no_conflict_when_key_from_input(self):
+    async def test_conflict_error_on_input_keys_too(self):
+        """conflict='error' now applies to ALL keys, including input keys."""
+
         @tool(name="a")
         def a(input: dict) -> dict:
             return {"x": input["x"] + 1}
@@ -112,10 +114,8 @@ class TestParallel:
         def b(input: dict) -> dict:
             return {"x": input["x"] + 2}
 
-        # "x" is in input, so both blocks overwriting it is not a "new key" conflict
-        result = await parallel(a, b, conflict="error").run({"x": 0})
-        # last wins for input keys regardless of conflict mode
-        assert result["x"] in (1, 2)
+        with pytest.raises(MergeConflictError):
+            await parallel(a, b, conflict="error").run({"x": 0})
 
     async def test_does_not_mutate_input(self, to_upper):
         original = {"text": "hello"}
@@ -127,7 +127,7 @@ class TestComposition:
     async def test_sequential_of_parallel(self, to_upper, extract_length, add_one):
         pipeline = sequential(
             parallel(to_upper, extract_length),
-            add_one,  # operates on "value" — won't conflict
+            add_one,
         )
         result = await pipeline.run({"text": "hello", "value": 0})
         assert result["text"] == "HELLO"

@@ -13,7 +13,6 @@ class TestTextSplitter:
         result = await splitter.run({"text": text})
         chunks = result["chunks"]
         assert len(chunks) >= 2
-        # all original content should be present across chunks
         assert all(line in "\n".join(chunks) for line in text.split("\n"))
 
     async def test_empty_text(self):
@@ -43,10 +42,47 @@ class TestTextSplitter:
         result = await splitter.run({"text": text})
         chunks = result["chunks"]
         if len(chunks) >= 2:
-            # overlap means some words appear in consecutive chunks
             words_0 = set(chunks[0].split())
             words_1 = set(chunks[1].split())
-            assert words_0 & words_1  # should share at least one word
+            assert words_0 & words_1
+
+    async def test_hard_split_long_segment(self):
+        """Segments longer than chunk_size are force-split by character."""
+        splitter = TextSplitter(chunk_size=10, overlap=0, separator="\n")
+        text = "a" * 25  # single segment, no separator
+        result = await splitter.run({"text": text})
+        chunks = result["chunks"]
+        assert len(chunks) >= 3
+        assert all(len(c) <= 10 for c in chunks)
+        # all content preserved
+        assert "".join(chunks) == text
+
+    async def test_hard_split_with_overlap(self):
+        """Force-split respects overlap."""
+        splitter = TextSplitter(chunk_size=10, overlap=3, separator="\n")
+        text = "abcdefghijklmnopqrstuvwxyz"
+        result = await splitter.run({"text": text})
+        chunks = result["chunks"]
+        assert all(len(c) <= 10 for c in chunks)
+        # overlap means consecutive chunks share characters
+        if len(chunks) >= 2:
+            assert chunks[0][-3:] == chunks[1][:3]
+
+    async def test_mixed_long_and_short_segments(self):
+        """Mix of normal and oversized segments."""
+        splitter = TextSplitter(chunk_size=10, overlap=0, separator="\n")
+        text = "short\n" + "x" * 25 + "\ntiny"
+        result = await splitter.run({"text": text})
+        chunks = result["chunks"]
+        assert all(len(c) <= 10 for c in chunks)
+
+    async def test_every_chunk_respects_max_size(self):
+        """Property: no chunk ever exceeds chunk_size."""
+        splitter = TextSplitter(chunk_size=15, overlap=5, separator=" ")
+        text = "the quick brown fox jumps over the lazy dog " + "x" * 30
+        result = await splitter.run({"text": text})
+        for chunk in result["chunks"]:
+            assert len(chunk) <= 15, f"Chunk too long: {len(chunk)} chars: {chunk!r}"
 
 
 class TestTransformer:

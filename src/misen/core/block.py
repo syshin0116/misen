@@ -2,6 +2,9 @@
 
 Every Block is an async function: dict → dict.
 Blocks compose via operators (|, &) and the result is always another Block.
+
+Subclasses implement ``execute()``. The public ``run()`` method validates
+the dict→dict contract and wraps errors in ``BlockError``.
 """
 
 from __future__ import annotations
@@ -12,11 +15,14 @@ import inspect
 from abc import ABC, abstractmethod
 from typing import Any, Awaitable, Callable, overload
 
+from misen.errors import BlockError, MisenError
+
 
 class Block(ABC):
     """Abstract base for all misen blocks.
 
-    Subclasses must implement ``async run(input) -> dict``.
+    Subclasses must implement ``async execute(input) -> dict``.
+    Call ``run()`` to execute with contract validation.
     """
 
     name: str
@@ -28,9 +34,27 @@ class Block(ABC):
 
     # ── execution ────────────────────────────────────────────
 
-    @abstractmethod
     async def run(self, input: dict[str, Any]) -> dict[str, Any]:
-        """Execute the block. Subclasses must override."""
+        """Execute the block with dict→dict contract validation."""
+        if not isinstance(input, dict):
+            raise BlockError(
+                f"{self.name}: expected dict input, got {type(input).__name__}"
+            )
+        try:
+            result = await self.execute(input)
+        except MisenError:
+            raise
+        except Exception as exc:
+            raise BlockError(f"{self.name} failed: {exc}") from exc
+        if not isinstance(result, dict):
+            raise BlockError(
+                f"{self.name}: expected dict output, got {type(result).__name__}"
+            )
+        return result
+
+    @abstractmethod
+    async def execute(self, input: dict[str, Any]) -> dict[str, Any]:
+        """Core logic. Subclasses must override this, not ``run()``."""
         ...
 
     def run_sync(self, input: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -96,7 +120,7 @@ class FunctionBlock(Block):
         self._fn = fn
         self._is_async = inspect.iscoroutinefunction(fn)
 
-    async def run(self, input: dict[str, Any]) -> dict[str, Any]:
+    async def execute(self, input: dict[str, Any]) -> dict[str, Any]:
         if self._is_async:
             return await self._fn(input)  # type: ignore[misc]
         return self._fn(input)  # type: ignore[return-value]
