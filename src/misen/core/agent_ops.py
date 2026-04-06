@@ -181,11 +181,17 @@ class Free(Block):
 
             try:
                 parsed = json.loads(response)
-            except json.JSONDecodeError as exc:
-                raise BlockError(
-                    f"Free({self.name}): LLM returned invalid JSON at step {step}: "
-                    f"{response[:200]!r}"
-                ) from exc
+            except json.JSONDecodeError:
+                # LLM may return multiple JSON objects or JSON + text.
+                # Try parsing just the first line as JSON.
+                first_line = response.split("\n", 1)[0].strip()
+                try:
+                    parsed = json.loads(first_line)
+                except json.JSONDecodeError as exc:
+                    raise BlockError(
+                        f"Free({self.name}): LLM returned invalid JSON at step {step}: "
+                        f"{response[:200]!r}"
+                    ) from exc
 
             if parsed.get("done"):
                 result = parsed.get("result", {})
