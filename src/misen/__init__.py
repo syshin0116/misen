@@ -14,14 +14,12 @@ from misen.core.operators import (
     parallel,
     sequential,
 )
-from misen.core.registry import Registry
 from misen.core.runner import run, run_sync
 from misen.errors import (
     BlockError,
     LoopMaxIterationsError,
     MergeConflictError,
     MisenError,
-    RegistryKeyError,
 )
 
 __version__ = "0.1.0"
@@ -39,8 +37,6 @@ __all__ = [
     "MergeConflictError",
     "MisenError",
     "Parallel",
-    "Registry",
-    "RegistryKeyError",
     "Sequential",
     "branch",
     "free",

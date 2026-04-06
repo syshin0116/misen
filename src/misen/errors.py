@@ -15,7 +15,3 @@ class MergeConflictError(MisenError):
 
 class LoopMaxIterationsError(MisenError):
     """Loop exceeded the maximum number of iterations."""
-
-
-class RegistryKeyError(MisenError, KeyError):
-    """Block not found in the registry."""

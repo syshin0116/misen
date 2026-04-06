@@ -201,21 +201,6 @@ misen Block (dict → dict)
     └── n8n adapter → HTTP call
 ```
 
-### Registry (optional)
-
-An optional catalog layer for organizing blocks. Not part of the core execution path — blocks compose and run without it.
-
-```python
-from misen import Registry
-
-reg = Registry()
-reg.register(parse, tags=["ingest"])
-reg.register(chunk, tags=["ingest"])
-
-reg.get("parse")
-reg.search(tags=["ingest"])
-```
-
 ### Rust vs Python
 
 | Area | Language | Rationale |
