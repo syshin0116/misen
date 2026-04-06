@@ -34,7 +34,7 @@ Project B:  PDF parsing → chunking → embedding → Qdrant
 |--|---|---|
 | Unit of reuse | Chain / Node (framework-specific) | Block (`dict → dict`, platform-free) |
 | Composition | Graph DSL | Operators (`\|`, `&`, `sequential`, `parallel`) |
-| Platform | Locked to the framework | Adapters for LangGraph, MCP, FastAPI, n8n |
+| Platform | Locked to the framework | Plain Python — use anywhere |
 | Execution modes | Deterministic or agentic, not both | Mix forced / guided / free in one pipeline |
 | Reuse across projects | Copy-paste | Import and compose |
 
@@ -191,26 +191,7 @@ Subclasses implement `execute()`. The public `run()` method adds input/output va
 
 ### Platform independent
 
-The core knows nothing about platforms. Adapters translate between misen blocks and external systems.
-
-```
-misen Block (dict → dict)
-    ├── LangGraph adapter → LangGraph node
-    ├── MCP adapter → MCP tool
-    ├── FastAPI adapter → REST endpoint
-    └── n8n adapter → HTTP call
-```
-
-### Rust vs Python
-
-| Area | Language | Rationale |
-|---|---|---|
-| Core (block, operators, runner) | **Python** | Orchestration, not CPU-bound |
-| Adapters | **Python** | Platform integration, I/O-bound |
-| Text splitting, token counting | Python → **Rust** | 10x for large batches (PyO3 + maturin) |
-| Binary parsing (HWP) | **Rust** | Memory safety, speed |
-
-The core stays Python. Rust is only for CPU-bound data processing, distributed as wheels. Falls back to Python when Rust extensions aren't installed.
+The core knows nothing about platforms. Use blocks in any Python context — wrap them in FastAPI endpoints, LangGraph nodes, MCP tools, or whatever fits your stack. It's just a function call.
 
 ---
 
@@ -220,7 +201,7 @@ The core stays Python. Rust is only for CPU-bound data processing, distributed a
 pytest tests/ -v
 ```
 
-102 tests covering blocks, operators, agent ops, registry, tools, and composition.
+87 tests covering blocks, operators, agent ops, tools, and composition.
 
 ---
 
