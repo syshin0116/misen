@@ -8,7 +8,7 @@ Define once, compose freely, plug in anywhere.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/syshin0116/misen/blob/main/LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-102%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-169%20passed-brightgreen.svg)]()
 
 </div>
 
@@ -112,7 +112,7 @@ All operators return blocks, so they nest and compose recursively.
 |---|---|
 | `sequential(A, B, C)` | A → B → C, accumulating outputs |
 | `parallel(A, B)` | Run concurrently, merge results |
-| `branch(cond, A, B)` | Conditional routing (sync or async predicate) |
+| `branch(cond, A, B)` | Conditional routing, merges result into input |
 | `loop(A, until=cond)` | Repeat until condition is met |
 | `map_each(A, over=key)` | Apply to each list element concurrently |
 | `guided(llm, prompt, [A,B])` | LLM picks one block to run |
@@ -148,6 +148,18 @@ The `llm` argument is any async callable `list[dict] → str`. Wrap any LLM clie
 async def my_llm(messages: list[dict[str, str]]) -> str:
     resp = await client.chat.completions.create(model="gpt-4o", messages=messages)
     return resp.choices[0].message.content
+```
+
+All option/tool names must be unique — duplicate names raise `ValueError` at construction time.
+
+Runtime metadata (which option was chosen, how many steps were taken) is stored under the `__misen__` key, separate from user data:
+
+```python
+result = await guided(llm, "Pick", [a, b]).run({"x": 1})
+result["__misen__"]["guided_choice"]  # → "a"
+
+result = await free(llm, "Go", [tool_a]).run({})
+result["__misen__"]["free_steps"]     # → 3
 ```
 
 ### Parallel conflict strategies
@@ -189,6 +201,8 @@ Everything is a block — a tool, a pipeline, a nested composition. The `dict �
 
 Subclasses implement `execute()`. The public `run()` method adds input/output validation and error normalization.
 
+All operators merge their result into the input dict — `sequential`, `parallel`, `branch`, and `loop` all preserve upstream keys. This means every block in a chain can access any key produced by earlier blocks.
+
 ### Platform independent
 
 The core knows nothing about platforms. Use blocks in any Python context — wrap them in FastAPI endpoints, LangGraph nodes, MCP tools, or whatever fits your stack. It's just a function call.
@@ -201,7 +215,7 @@ The core knows nothing about platforms. Use blocks in any Python context — wra
 pytest tests/ -v
 ```
 
-87 tests covering blocks, operators, agent ops, tools, and composition.
+169 tests covering blocks, operators, agent ops, tools, composition, and stress scenarios.
 
 ---
 
