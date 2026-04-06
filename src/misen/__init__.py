@@ -1,6 +1,6 @@
 """misen — Reusable AI workflow blocks."""
 
-from misen.core.agent_ops import Free, Guided, free, guided
+from misen.core.agent_ops import Agent, Select, agent, select
 from misen.core.block import Block, FunctionBlock, tool
 from misen.core.operators import (
     Branch,
@@ -25,27 +25,27 @@ from misen.errors import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "Agent",
     "Block",
     "BlockError",
     "Branch",
-    "Free",
     "FunctionBlock",
-    "Guided",
     "Loop",
     "LoopMaxIterationsError",
     "MapEach",
     "MergeConflictError",
     "MisenError",
     "Parallel",
+    "Select",
     "Sequential",
+    "agent",
     "branch",
-    "free",
-    "guided",
     "loop",
     "map_each",
     "parallel",
     "run",
     "run_sync",
+    "select",
     "sequential",
     "tool",
 ]

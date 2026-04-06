@@ -10,12 +10,12 @@ from misen import (
     BlockError,
     LoopMaxIterationsError,
     MergeConflictError,
+    agent,
     branch,
-    free,
-    guided,
     loop,
     map_each,
     parallel,
+    select,
     sequential,
     tool,
 )
@@ -696,7 +696,7 @@ class TestMapEachStress:
 
 
 # ═══════════════════════════════════════════════════════════════
-# Guided — LLM selection edge cases
+# Select — LLM selection edge cases
 # ═══════════════════════════════════════════════════════════════
 
 
@@ -712,14 +712,14 @@ def make_mock_llm(responses: list[str]):
     return mock_llm
 
 
-class TestGuidedStress:
+class TestSelectStress:
     async def test_whitespace_in_response(self):
         @tool(name="pick_me", description="The one")
         def pick_me(input: dict) -> dict:
             return {"picked": True}
 
         llm = make_mock_llm(["  pick_me  \n"])
-        g = guided(llm, "Pick", [pick_me])
+        g = select(llm, "Pick", [pick_me])
         result = await g.run({})
         assert result["picked"] is True
 
@@ -730,7 +730,7 @@ class TestGuidedStress:
 
         llm = make_mock_llm([""])
         with pytest.raises(BlockError):
-            await guided(llm, "Pick", [a]).run({})
+            await select(llm, "Pick", [a]).run({})
 
     async def test_llm_returns_description_not_name(self):
         @tool(name="analyzer", description="Analyze documents")
@@ -739,7 +739,7 @@ class TestGuidedStress:
 
         llm = make_mock_llm(["Analyze documents"])
         with pytest.raises(BlockError):
-            await guided(llm, "Pick", [analyzer]).run({})
+            await select(llm, "Pick", [analyzer]).run({})
 
     async def test_many_options(self):
         options = []
@@ -752,7 +752,7 @@ class TestGuidedStress:
             options.append(opt)
 
         llm = make_mock_llm(["option_17"])
-        result = await guided(llm, "Pick one", options).run({})
+        result = await select(llm, "Pick one", options).run({})
         assert result["chosen"] == 17
 
     async def test_llm_raises(self):
@@ -764,7 +764,7 @@ class TestGuidedStress:
             raise ConnectionError("LLM is down")
 
         with pytest.raises(BlockError, match="LLM is down"):
-            await guided(failing_llm, "Pick", [a]).run({})
+            await select(failing_llm, "Pick", [a]).run({})
 
     async def test_unicode_option_name(self):
         @tool(name="분석기", description="Korean analyzer")
@@ -772,7 +772,7 @@ class TestGuidedStress:
             return {"lang": "ko"}
 
         llm = make_mock_llm(["분석기"])
-        result = await guided(llm, "Pick", [analyzer]).run({})
+        result = await select(llm, "Pick", [analyzer]).run({})
         assert result["lang"] == "ko"
 
     def test_duplicate_option_names_raises(self):
@@ -785,15 +785,15 @@ class TestGuidedStress:
             return {}
 
         with pytest.raises(ValueError, match="duplicate block name"):
-            guided(make_mock_llm([""]), "Pick", [a, b])
+            select(make_mock_llm([""]), "Pick", [a, b])
 
 
 # ═══════════════════════════════════════════════════════════════
-# Free — ReAct loop edge cases
+# Agent — ReAct loop edge cases
 # ═══════════════════════════════════════════════════════════════
 
 
-class TestFreeStress:
+class TestAgentStress:
     async def test_llm_calls_same_tool_repeatedly(self):
         call_count = {"n": 0}
 
@@ -803,7 +803,7 @@ class TestFreeStress:
             return {"value": input.get("value", 0) + 1}
 
         responses = [json.dumps({"tool": "inc", "input": {}})] * 5 + [json.dumps({"done": True})]
-        result = await free(make_mock_llm(responses), "Go", [inc], max_steps=10).run({})
+        result = await agent(make_mock_llm(responses), "Go", [inc], max_steps=10).run({})
         assert result["value"] == 5
         assert call_count["n"] == 5
 
@@ -814,7 +814,7 @@ class TestFreeStress:
 
         llm = make_mock_llm(["{broken json"])
         with pytest.raises(BlockError, match="invalid JSON"):
-            await free(llm, "Go", [a]).run({})
+            await agent(llm, "Go", [a]).run({})
 
     async def test_llm_returns_json_without_tool_or_done(self):
         @tool(name="a", description="A")
@@ -825,10 +825,10 @@ class TestFreeStress:
             json.dumps({"random": "data"}),  # no "tool" or "done"
             json.dumps({"done": True}),
         ]
-        result = await free(make_mock_llm(responses), "Go", [a], max_steps=5).run({"x": 1})
+        result = await agent(make_mock_llm(responses), "Go", [a], max_steps=5).run({"x": 1})
         # Original input preserved, step count reflects both LLM calls
         assert result["x"] == 1
-        assert result["__misen__"]["free_steps"] == 2
+        assert result["__misen__"]["agent_steps"] == 2
         # Should eventually finish
 
     async def test_tool_raises_error(self):
@@ -838,7 +838,7 @@ class TestFreeStress:
 
         responses = [json.dumps({"tool": "explode", "input": {}})]
         with pytest.raises(BlockError, match="tool exploded"):
-            await free(make_mock_llm(responses), "Go", [explode]).run({})
+            await agent(make_mock_llm(responses), "Go", [explode]).run({})
 
     async def test_llm_raises_on_first_call(self):
         @tool(name="a", description="A")
@@ -849,7 +849,7 @@ class TestFreeStress:
             raise ConnectionError("network error")
 
         with pytest.raises(BlockError, match="network error"):
-            await free(failing_llm, "Go", [a]).run({})
+            await agent(failing_llm, "Go", [a]).run({})
 
     async def test_done_with_no_result_key(self):
         @tool(name="a", description="A")
@@ -857,7 +857,7 @@ class TestFreeStress:
             return {}
 
         responses = [json.dumps({"done": True})]
-        result = await free(make_mock_llm(responses), "Go", [a]).run({"x": 1})
+        result = await agent(make_mock_llm(responses), "Go", [a]).run({"x": 1})
         assert result["x"] == 1  # original input preserved
 
     async def test_done_with_non_dict_result_ignored(self):
@@ -866,7 +866,7 @@ class TestFreeStress:
             return {}
 
         responses = [json.dumps({"done": True, "result": "not a dict"})]
-        result = await free(make_mock_llm(responses), "Go", [a]).run({"x": 1})
+        result = await agent(make_mock_llm(responses), "Go", [a]).run({"x": 1})
         assert result["x"] == 1  # should not crash
 
     async def test_max_steps_1(self):
@@ -876,7 +876,7 @@ class TestFreeStress:
 
         responses = [json.dumps({"tool": "a", "input": {}})]
         with pytest.raises(LoopMaxIterationsError):
-            await free(make_mock_llm(responses), "Go", [a], max_steps=1).run({})
+            await agent(make_mock_llm(responses), "Go", [a], max_steps=1).run({})
 
     def test_duplicate_tool_names_raises(self):
         @tool(name="same", description="First")
@@ -888,7 +888,7 @@ class TestFreeStress:
             return {}
 
         with pytest.raises(ValueError, match="duplicate block name"):
-            free(make_mock_llm([""]), "Go", [a, b])
+            agent(make_mock_llm([""]), "Go", [a, b])
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -897,7 +897,7 @@ class TestFreeStress:
 
 
 class TestMisenMetadata:
-    async def test_guided_then_sequential_preserves_meta(self):
+    async def test_select_then_sequential_preserves_meta(self):
         @tool(name="pick", description="Pick")
         def pick(input: dict) -> dict:
             return {"picked": True}
@@ -907,12 +907,12 @@ class TestMisenMetadata:
             return {"after": True}
 
         llm = make_mock_llm(["pick"])
-        pipeline = sequential(guided(llm, "Go", [pick]), after)
+        pipeline = sequential(select(llm, "Go", [pick]), after)
         result = await pipeline.run({})
-        assert result["__misen__"]["guided_choice"] == "pick"
+        assert result["__misen__"]["selected"] == "pick"
         assert result["after"] is True
 
-    async def test_two_guided_in_sequence(self):
+    async def test_two_select_in_sequence(self):
         @tool(name="a", description="A")
         def a(input: dict) -> dict:
             return {"from_a": True}
@@ -922,16 +922,16 @@ class TestMisenMetadata:
             return {"from_b": True}
 
         pipeline = sequential(
-            guided(make_mock_llm(["a"]), "First", [a]),
-            guided(make_mock_llm(["b"]), "Second", [b]),
+            select(make_mock_llm(["a"]), "First", [a]),
+            select(make_mock_llm(["b"]), "Second", [b]),
         )
         result = await pipeline.run({})
-        # Second guided overwrites __misen__.guided_choice
-        assert result["__misen__"]["guided_choice"] == "b"
+        # Second select overwrites __misen__.selected
+        assert result["__misen__"]["selected"] == "b"
         assert result["from_a"] is True
         assert result["from_b"] is True
 
-    async def test_free_meta_has_step_count(self):
+    async def test_agent_meta_has_step_count(self):
         @tool(name="inc", description="Inc")
         def inc(input: dict) -> dict:
             return {"value": input.get("value", 0) + 1}
@@ -941,8 +941,8 @@ class TestMisenMetadata:
             json.dumps({"tool": "inc", "input": {}}),
             json.dumps({"done": True}),
         ]
-        result = await free(make_mock_llm(responses), "Go", [inc], max_steps=10).run({})
-        assert result["__misen__"]["free_steps"] == 3
+        result = await agent(make_mock_llm(responses), "Go", [inc], max_steps=10).run({})
+        assert result["__misen__"]["agent_steps"] == 3
         assert result["value"] == 2
 
 

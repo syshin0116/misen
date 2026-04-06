@@ -22,10 +22,10 @@ Wrap any LLM client to match this signature::
 """
 
 
-# ── Guided ──────────────────────────────────────────────────
+# ── Select ─────────────────────────────────────────────────
 
 
-class Guided(Block):
+class Select(Block):
     """LLM selects one block from a list of options.
 
     The LLM receives a system prompt describing the task, plus a list
@@ -47,7 +47,7 @@ class Guided(Block):
     ) -> None:
         option_names = ", ".join(b.name for b in options)
         super().__init__(
-            name=name or f"Guided([{option_names}])",
+            name=name or f"Select([{option_names}])",
             description=description,
         )
         self.llm = llm
@@ -56,7 +56,7 @@ class Guided(Block):
         for b in options:
             if b.name in self.options:
                 raise ValueError(
-                    f"Guided: duplicate block name {b.name!r}. Each option must have a unique name."
+                    f"Select: duplicate block name {b.name!r}. Each option must have a unique name."
                 )
             self.options[b.name] = b
 
@@ -72,8 +72,8 @@ class Guided(Block):
                 "content": (
                     f"{self.prompt}\n\n"
                     f"Available options:\n{options_desc}\n\n"
-                    f"Respond in JSON with a single key \"choice\" containing "
-                    f"the name of the option you choose. Example: {{\"choice\": \"option_name\"}}"
+                    f'Respond in JSON with a single key "choice" containing '
+                    f'the name of the option you choose. Example: {{"choice": "option_name"}}'
                 ),
             },
             {
@@ -101,7 +101,7 @@ class Guided(Block):
 
         if block is None:
             raise BlockError(
-                f"Guided: LLM chose {choice!r}, but available options are: "
+                f"Select: LLM chose {choice!r}, but available options are: "
                 f"{list(self.options.keys())}"
             )
 
@@ -109,15 +109,15 @@ class Guided(Block):
         # Store runtime metadata separately from user data
         existing = result.get("__misen__")
         meta = existing if isinstance(existing, dict) else {}
-        meta["guided_choice"] = choice
+        meta["selected"] = choice
         return {**result, "__misen__": meta}
 
 
-# ── Free ────────────────────────────────────────────────────
+# ── Agent ──────────────────────────────────────────────────
 
 
-class Free(Block):
-    """LLM uses tools freely in a ReAct-style loop.
+class Agent(Block):
+    """LLM uses tools autonomously in a ReAct-style loop.
 
     The LLM receives a prompt and a set of available tool-blocks.
     It can call tools by responding with JSON, inspect results,
@@ -142,7 +142,7 @@ class Free(Block):
     ) -> None:
         tool_names = ", ".join(b.name for b in tools)
         super().__init__(
-            name=name or f"Free([{tool_names}])",
+            name=name or f"Agent([{tool_names}])",
             description=description,
         )
         self.llm = llm
@@ -151,7 +151,7 @@ class Free(Block):
         for b in tools:
             if b.name in self.tools:
                 raise ValueError(
-                    f"Free: duplicate block name {b.name!r}. Each tool must have a unique name."
+                    f"Agent: duplicate block name {b.name!r}. Each tool must have a unique name."
                 )
             self.tools[b.name] = b
         self.max_steps = max_steps
@@ -196,7 +196,7 @@ class Free(Block):
                     parsed = json.loads(first_line)
                 except json.JSONDecodeError as exc:
                     raise BlockError(
-                        f"Free({self.name}): LLM returned invalid JSON at step {step}: "
+                        f"Agent({self.name}): LLM returned invalid JSON at step {step}: "
                         f"{response[:200]!r}"
                     ) from exc
 
@@ -206,7 +206,7 @@ class Free(Block):
                     data.update(result)
                 existing = data.get("__misen__")
                 meta = existing if isinstance(existing, dict) else {}
-                meta["free_steps"] = step + 1
+                meta["agent_steps"] = step + 1
                 data["__misen__"] = meta
                 return data
 
@@ -236,28 +236,28 @@ class Free(Block):
             )
 
         raise LoopMaxIterationsError(
-            f"Free({self.name}) exceeded {self.max_steps} steps without finishing"
+            f"Agent({self.name}) exceeded {self.max_steps} steps without finishing"
         )
 
 
 # ── convenience functions ────────────────────────────────────
 
 
-def guided(
+def select(
     llm: LLMCallable,
     prompt: str,
     options: list[Block],
     **kwargs: Any,
-) -> Guided:
-    """Create a Guided block."""
-    return Guided(llm, prompt, options, **kwargs)
+) -> Select:
+    """Create a Select block — LLM picks one option to run."""
+    return Select(llm, prompt, options, **kwargs)
 
 
-def free(
+def agent(
     llm: LLMCallable,
     prompt: str,
     tools: list[Block],
     **kwargs: Any,
-) -> Free:
-    """Create a Free block."""
-    return Free(llm, prompt, tools, **kwargs)
+) -> Agent:
+    """Create an Agent block — LLM uses tools in a ReAct loop."""
+    return Agent(llm, prompt, tools, **kwargs)

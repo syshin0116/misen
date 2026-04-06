@@ -35,7 +35,7 @@ Project B:  PDF parsing → chunking → embedding → Qdrant
 | Unit of reuse | Chain / Node (framework-specific) | Block (`dict → dict`, platform-free) |
 | Composition | Graph DSL | Operators (`\|`, `&`, `sequential`, `parallel`) |
 | Platform | Locked to the framework | Plain Python — use anywhere |
-| Execution modes | Deterministic or agentic, not both | Mix forced / guided / free in one pipeline |
+| Execution modes | Deterministic or agentic, not both | Mix deterministic + LLM-driven in one pipeline |
 | Reuse across projects | Copy-paste | Import and compose |
 
 ---
@@ -115,8 +115,8 @@ All operators return blocks, so they nest and compose recursively.
 | `branch(cond, A, B)` | Conditional routing, merges result into input |
 | `loop(A, until=cond)` | Repeat until condition is met |
 | `map_each(A, over=key)` | Apply to each list element concurrently |
-| `guided(llm, prompt, [A,B])` | LLM picks one block to run |
-| `free(llm, prompt, tools)` | LLM uses tools in a ReAct loop |
+| `select(llm, prompt, [A,B])` | LLM picks one block to run |
+| `agent(llm, prompt, tools)` | LLM uses tools in a ReAct loop |
 | `a \| b` | Pipe syntax for `sequential` |
 | `a & b` | Syntax for `parallel` |
 
@@ -133,13 +133,13 @@ batch = map_each(process_item, over_key="documents")
 ### LLM-driven
 
 ```python
-from misen import guided, free
+from misen import select, agent
 
-# LLM picks the best analysis method
-router = guided(my_llm, "Choose analysis method", [stat_analysis, semantic_analysis])
+# LLM picks one block to run
+router = select(my_llm, "Choose analysis method", [stat_analysis, semantic_analysis])
 
-# LLM uses tools freely in a ReAct loop
-agent = free(my_llm, "Analyze this document", [search, summarize, extract])
+# LLM uses tools autonomously in a ReAct loop
+researcher = agent(my_llm, "Analyze this document", [search, summarize, extract])
 ```
 
 The `llm` argument is any async callable `list[dict] → str`. Wrap any LLM client to match:
@@ -155,11 +155,11 @@ All option/tool names must be unique — duplicate names raise `ValueError` at c
 Runtime metadata (which option was chosen, how many steps were taken) is stored under the `__misen__` key, separate from user data:
 
 ```python
-result = await guided(llm, "Pick", [a, b]).run({"x": 1})
-result["__misen__"]["guided_choice"]  # → "a"
+result = await select(llm, "Pick", [a, b]).run({"x": 1})
+result["__misen__"]["selected"]      # → "a"
 
-result = await free(llm, "Go", [tool_a]).run({})
-result["__misen__"]["free_steps"]     # → 3
+result = await agent(llm, "Go", [tool_a]).run({})
+result["__misen__"]["agent_steps"]   # → 3
 ```
 
 ### Parallel conflict strategies
