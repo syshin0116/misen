@@ -146,7 +146,7 @@ The `llm` argument is any async callable `list[dict] → str`. Wrap any LLM clie
 
 ```python
 async def my_llm(messages: list[dict[str, str]]) -> str:
-    resp = await client.chat.completions.create(model="gpt-4o", messages=messages)
+    resp = await client.chat.completions.create(model="gpt-5.4-nano", messages=messages)
     return resp.choices[0].message.content
 ```
 

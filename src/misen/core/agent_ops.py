@@ -16,7 +16,7 @@ Wrap any LLM client to match this signature::
 
     async def my_llm(messages: list[dict[str, str]]) -> str:
         resp = await client.chat.completions.create(
-            model="gpt-4o", messages=messages,
+            model="gpt-5.4-nano", messages=messages,
         )
         return resp.choices[0].message.content
 """
@@ -72,8 +72,8 @@ class Guided(Block):
                 "content": (
                     f"{self.prompt}\n\n"
                     f"Available options:\n{options_desc}\n\n"
-                    f"Respond with ONLY the name of the option you choose. "
-                    f"Nothing else."
+                    f"Respond in JSON with a single key \"choice\" containing "
+                    f"the name of the option you choose. Example: {{\"choice\": \"option_name\"}}"
                 ),
             },
             {
@@ -82,13 +82,20 @@ class Guided(Block):
             },
         ]
 
-        choice = (await self.llm(messages)).strip()
+        raw = (await self.llm(messages)).strip()
+
+        # Parse choice — support both plain text and JSON {"choice": "name"}
+        try:
+            parsed = json.loads(raw)
+            choice = parsed.get("choice", raw) if isinstance(parsed, dict) else raw
+        except json.JSONDecodeError:
+            choice = raw
 
         # Fuzzy match: try exact, then case-insensitive
         block = self.options.get(choice)
         if block is None:
             for opt_name, opt_block in self.options.items():
-                if opt_name.lower() == choice.lower():
+                if opt_name.lower() == choice.strip().lower():
                     block = opt_block
                     break
 
