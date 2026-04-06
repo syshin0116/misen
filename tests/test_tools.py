@@ -1,8 +1,5 @@
 """Tests for built-in tools."""
 
-import pytest
-
-from misen import sequential
 from misen.tools import TextSplitter, Transformer
 
 

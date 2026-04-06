@@ -3,7 +3,6 @@
 import pytest
 
 from misen import MergeConflictError, parallel, sequential, tool
-from misen.core.operators import Parallel, Sequential
 
 
 class TestSequential:
@@ -64,7 +63,7 @@ class TestParallel:
         pipeline = parallel(spy_a, spy_b)
         await pipeline.run({"x": 42})
 
-        for name, data in received:
+        for _name, data in received:
             assert data == {"x": 42}
 
     async def test_conflict_last_default(self):

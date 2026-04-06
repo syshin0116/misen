@@ -1,7 +1,5 @@
 """Tests for the runner module."""
 
-import pytest
-
 from misen import run, run_sync, tool
 
 

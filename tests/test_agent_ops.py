@@ -4,8 +4,7 @@ import json
 
 import pytest
 
-from misen import BlockError, Free, Guided, LoopMaxIterationsError, free, guided, tool
-
+from misen import BlockError, LoopMaxIterationsError, free, guided, tool
 
 # ── Mock LLM ────────────────────────────────────────────────
 

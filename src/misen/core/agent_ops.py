@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from misen.core.block import Block
 from misen.errors import BlockError, LoopMaxIterationsError
@@ -161,7 +162,6 @@ class Free(Block):
         ]
 
         data = dict(input)
-        steps_taken = 0
 
         for step in range(self.max_steps):
             response = (await self.llm(messages)).strip()
@@ -169,11 +169,11 @@ class Free(Block):
 
             try:
                 parsed = json.loads(response)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
                 raise BlockError(
                     f"Free({self.name}): LLM returned invalid JSON at step {step}: "
                     f"{response[:200]!r}"
-                )
+                ) from exc
 
             if parsed.get("done"):
                 result = parsed.get("result", {})
@@ -189,23 +189,26 @@ class Free(Block):
             tool_input = parsed.get("input", {})
 
             if tool_name not in self.tools:
-                messages.append({
-                    "role": "user",
-                    "content": f"Error: Unknown tool {tool_name!r}. "
-                    f"Available: {list(self.tools.keys())}",
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"Error: Unknown tool {tool_name!r}. "
+                        f"Available: {list(self.tools.keys())}",
+                    }
+                )
                 continue
 
             block = self.tools[tool_name]
             tool_result = await block.run({**data, **tool_input})
             data.update(tool_result)
-            steps_taken = step + 1
 
-            messages.append({
-                "role": "user",
-                "content": f"Tool {tool_name!r} result:\n"
-                f"{json.dumps(tool_result, default=str, ensure_ascii=False)}",
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Tool {tool_name!r} result:\n"
+                    f"{json.dumps(tool_result, default=str, ensure_ascii=False)}",
+                }
+            )
 
         raise LoopMaxIterationsError(
             f"Free({self.name}) exceeded {self.max_steps} steps without finishing"

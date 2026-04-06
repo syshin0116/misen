@@ -13,7 +13,8 @@ import asyncio
 import concurrent.futures
 import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Awaitable, Callable, overload
+from collections.abc import Awaitable, Callable
+from typing import Any, overload
 
 from misen.errors import BlockError, MisenError
 
@@ -37,9 +38,7 @@ class Block(ABC):
     async def run(self, input: dict[str, Any]) -> dict[str, Any]:
         """Execute the block with dict→dict contract validation."""
         if not isinstance(input, dict):
-            raise BlockError(
-                f"{self.name}: expected dict input, got {type(input).__name__}"
-            )
+            raise BlockError(f"{self.name}: expected dict input, got {type(input).__name__}")
         try:
             result = await self.execute(input)
         except MisenError:
@@ -47,9 +46,7 @@ class Block(ABC):
         except Exception as exc:
             raise BlockError(f"{self.name} failed: {exc}") from exc
         if not isinstance(result, dict):
-            raise BlockError(
-                f"{self.name}: expected dict output, got {type(result).__name__}"
-            )
+            raise BlockError(f"{self.name}: expected dict output, got {type(result).__name__}")
         return result
 
     @abstractmethod

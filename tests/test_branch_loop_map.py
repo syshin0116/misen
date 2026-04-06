@@ -3,8 +3,6 @@
 import pytest
 
 from misen import (
-    Branch,
-    Loop,
     LoopMaxIterationsError,
     MapEach,
     branch,

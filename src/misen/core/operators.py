@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any, Callable, Awaitable, Literal
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 
 from misen.core.block import Block
 from misen.errors import BlockError, LoopMaxIterationsError, MergeConflictError
@@ -73,9 +74,7 @@ class Parallel(Block):
         self.conflict = conflict
 
     async def execute(self, input: dict[str, Any]) -> dict[str, Any]:
-        results = await asyncio.gather(
-            *(block.run(dict(input)) for block in self.blocks)
-        )
+        results = await asyncio.gather(*(block.run(dict(input)) for block in self.blocks))
 
         merged: dict[str, Any] = dict(input)
         seen_keys: dict[str, int] = {}  # key → index of block that first produced it
@@ -163,7 +162,7 @@ class Loop(Block):
 
     async def execute(self, input: dict[str, Any]) -> dict[str, Any]:
         data = dict(input)
-        for i in range(self.max_iterations):
+        for _i in range(self.max_iterations):
             result = await self.block.run(data)
             data.update(result)
             if await _call_predicate(self.until, data):
