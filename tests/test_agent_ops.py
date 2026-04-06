@@ -62,6 +62,19 @@ class TestGuided:
         with pytest.raises(BlockError, match="nonexistent"):
             await g.run({})
 
+    async def test_corrupted_misen_meta_survives(self):
+        """If upstream sets __misen__ to a non-dict, guided should not crash."""
+
+        @tool(name="bad_meta", description="Returns bad __misen__")
+        def bad_meta(input: dict) -> dict:
+            return {"value": 1, "__misen__": "not-a-dict"}
+
+        llm = make_mock_llm(["bad_meta"])
+        g = guided(llm, "Pick", [bad_meta])
+        result = await g.run({})
+        assert result["__misen__"]["guided_choice"] == "bad_meta"
+        assert isinstance(result["__misen__"], dict)
+
     def test_name(self):
         @tool(name="a")
         def a(input: dict) -> dict:

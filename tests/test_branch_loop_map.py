@@ -228,6 +228,29 @@ class TestMapEach:
         starts = [x for x in call_order if x.startswith("start")]
         assert len(starts) == 3
 
+    async def test_string_input_raises(self):
+        """Strings must not be silently iterated character-wise."""
+        from misen import BlockError
+
+        @tool(name="noop")
+        def noop(input: dict) -> dict:
+            return {}
+
+        m = map_each(noop, over_key="items")
+        with pytest.raises(BlockError, match="must be a list"):
+            await m.run({"items": "abc"})
+
+    async def test_bytes_input_raises(self):
+        from misen import BlockError
+
+        @tool(name="noop")
+        def noop(input: dict) -> dict:
+            return {}
+
+        m = map_each(noop, over_key="items")
+        with pytest.raises(BlockError, match="must be a list"):
+            await m.run({"items": b"abc"})
+
     def test_name(self):
         @tool(name="proc")
         def proc(input: dict) -> dict:

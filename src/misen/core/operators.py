@@ -7,7 +7,7 @@ import inspect
 from typing import Any, Callable, Awaitable, Literal
 
 from misen.core.block import Block
-from misen.errors import LoopMaxIterationsError, MergeConflictError
+from misen.errors import BlockError, LoopMaxIterationsError, MergeConflictError
 
 Predicate = Callable[[dict[str, Any]], bool | Awaitable[bool]]
 """A sync or async function that takes a dict and returns bool."""
@@ -203,6 +203,15 @@ class MapEach(Block):
 
     async def execute(self, input: dict[str, Any]) -> dict[str, Any]:
         items = input[self.over_key]
+        if isinstance(items, (str, bytes)):
+            raise BlockError(
+                f"MapEach: {self.over_key!r} must be a list, got {type(items).__name__}. "
+                f"Strings are not iterated element-wise."
+            )
+        if not isinstance(items, list):
+            raise BlockError(
+                f"MapEach: {self.over_key!r} must be a list, got {type(items).__name__}"
+            )
         base = {k: v for k, v in input.items() if k != self.over_key}
 
         async def run_one(element: Any) -> dict[str, Any]:

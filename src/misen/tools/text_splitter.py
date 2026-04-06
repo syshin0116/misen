@@ -45,12 +45,12 @@ class TextSplitter(Block):
         """Split text by character count when it exceeds chunk_size."""
         chunks: list[str] = []
         start = 0
+        step = self.chunk_size - self.overlap
+        if step <= 0:
+            step = self.chunk_size
         while start < len(text):
             end = min(start + self.chunk_size, len(text))
             chunks.append(text[start:end])
-            step = self.chunk_size - self.overlap
-            if step <= 0:
-                step = self.chunk_size
             start += step
         return chunks
 
@@ -67,8 +67,7 @@ class TextSplitter(Block):
             nonlocal current, current_len
             if not current:
                 return
-            chunk = self.separator.join(current)
-            chunks.append(chunk)
+            chunks.append(self.separator.join(current))
             # keep trailing segments for overlap
             overlap_segments: list[str] = []
             overlap_len = 0
@@ -81,11 +80,19 @@ class TextSplitter(Block):
             current = overlap_segments
             current_len = overlap_len
 
+        def reset_current() -> None:
+            nonlocal current, current_len
+            current = []
+            current_len = 0
+
         for segment in segments:
             # Force-split segments that exceed chunk_size on their own
             if len(segment) > self.chunk_size:
                 flush_current()
-                chunks.extend(self._force_split(segment))
+                force_chunks = self._force_split(segment)
+                chunks.extend(force_chunks)
+                # Reset state: use tail of last force-split chunk as overlap seed
+                reset_current()
                 continue
 
             seg_len = len(segment) + (len(self.separator) if current else 0)

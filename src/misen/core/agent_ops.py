@@ -93,7 +93,8 @@ class Guided(Block):
 
         result = await block.run(dict(input))
         # Store runtime metadata separately from user data
-        meta = result.get("__misen__", {})
+        existing = result.get("__misen__")
+        meta = existing if isinstance(existing, dict) else {}
         meta["guided_choice"] = choice
         return {**result, "__misen__": meta}
 
@@ -178,7 +179,8 @@ class Free(Block):
                 result = parsed.get("result", {})
                 if isinstance(result, dict):
                     data.update(result)
-                meta = data.get("__misen__", {})
+                existing = data.get("__misen__")
+                meta = existing if isinstance(existing, dict) else {}
                 meta["free_steps"] = step + 1
                 data["__misen__"] = meta
                 return data

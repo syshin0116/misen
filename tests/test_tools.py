@@ -76,6 +76,20 @@ class TestTextSplitter:
         chunks = result["chunks"]
         assert all(len(c) <= 10 for c in chunks)
 
+    async def test_force_split_resets_overlap_state(self):
+        """Regression: after force-split, overlap must not use stale pre-long state."""
+        splitter = TextSplitter(chunk_size=10, overlap=3, separator="\n")
+        text = "abc\n" + "x" * 25 + "\nzzz"
+        result = await splitter.run({"text": text})
+        chunks = result["chunks"]
+        # "abc" should NOT appear in the chunk after the long segment
+        last_chunk = chunks[-1]
+        assert "abc" not in last_chunk, (
+            f"Stale overlap: last chunk {last_chunk!r} contains 'abc' from before force-split"
+        )
+        assert "zzz" in last_chunk
+        assert all(len(c) <= 10 for c in chunks)
+
     async def test_every_chunk_respects_max_size(self):
         """Property: no chunk ever exceeds chunk_size."""
         splitter = TextSplitter(chunk_size=15, overlap=5, separator=" ")
