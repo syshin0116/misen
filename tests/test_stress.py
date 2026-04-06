@@ -405,21 +405,28 @@ class TestParallelStress:
         result = await parallel(parallel(a, b), parallel(c, d)).run({})
         assert result == {"a": 1, "b": 2, "c": 3, "d": 4}
 
-    async def test_slow_and_fast_blocks(self):
-        """Fast block shouldn't wait for slow block to start."""
+    async def test_actually_concurrent(self):
+        """Prove blocks run concurrently, not sequentially."""
+        import time
 
-        @tool(name="slow")
-        async def slow(input: dict) -> dict:
+        @tool(name="sleep_a")
+        async def sleep_a(input: dict) -> dict:
             await asyncio.sleep(0.1)
-            return {"slow": True}
+            return {"a": True}
 
-        @tool(name="fast")
-        async def fast(input: dict) -> dict:
-            return {"fast": True}
+        @tool(name="sleep_b")
+        async def sleep_b(input: dict) -> dict:
+            await asyncio.sleep(0.1)
+            return {"b": True}
 
-        result = await parallel(slow, fast).run({})
-        assert result["slow"] is True
-        assert result["fast"] is True
+        start = time.monotonic()
+        result = await parallel(sleep_a, sleep_b).run({})
+        elapsed = time.monotonic() - start
+
+        assert result["a"] is True
+        assert result["b"] is True
+        # Sequential would take ~0.2s. Parallel should be ~0.1s.
+        assert elapsed < 0.18, f"Took {elapsed:.3f}s — likely not concurrent"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -768,6 +775,18 @@ class TestGuidedStress:
         result = await guided(llm, "Pick", [analyzer]).run({})
         assert result["lang"] == "ko"
 
+    def test_duplicate_option_names_raises(self):
+        @tool(name="same_name", description="First")
+        def a(input: dict) -> dict:
+            return {}
+
+        @tool(name="same_name", description="Second")
+        def b(input: dict) -> dict:
+            return {}
+
+        with pytest.raises(ValueError, match="duplicate block name"):
+            guided(make_mock_llm([""]), "Pick", [a, b])
+
 
 # ═══════════════════════════════════════════════════════════════
 # Free — ReAct loop edge cases
@@ -806,8 +825,10 @@ class TestFreeStress:
             json.dumps({"random": "data"}),  # no "tool" or "done"
             json.dumps({"done": True}),
         ]
-        # Should treat missing "tool" key as unknown tool (None)
-        await free(make_mock_llm(responses), "Go", [a], max_steps=5).run({})
+        result = await free(make_mock_llm(responses), "Go", [a], max_steps=5).run({"x": 1})
+        # Original input preserved, step count reflects both LLM calls
+        assert result["x"] == 1
+        assert result["__misen__"]["free_steps"] == 2
         # Should eventually finish
 
     async def test_tool_raises_error(self):
@@ -856,6 +877,73 @@ class TestFreeStress:
         responses = [json.dumps({"tool": "a", "input": {}})]
         with pytest.raises(LoopMaxIterationsError):
             await free(make_mock_llm(responses), "Go", [a], max_steps=1).run({})
+
+    def test_duplicate_tool_names_raises(self):
+        @tool(name="same", description="First")
+        def a(input: dict) -> dict:
+            return {}
+
+        @tool(name="same", description="Second")
+        def b(input: dict) -> dict:
+            return {}
+
+        with pytest.raises(ValueError, match="duplicate block name"):
+            free(make_mock_llm([""]), "Go", [a, b])
+
+
+# ═══════════════════════════════════════════════════════════════
+# __misen__ metadata — accumulation and isolation
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestMisenMetadata:
+    async def test_guided_then_sequential_preserves_meta(self):
+        @tool(name="pick", description="Pick")
+        def pick(input: dict) -> dict:
+            return {"picked": True}
+
+        @tool(name="after")
+        def after(input: dict) -> dict:
+            return {"after": True}
+
+        llm = make_mock_llm(["pick"])
+        pipeline = sequential(guided(llm, "Go", [pick]), after)
+        result = await pipeline.run({})
+        assert result["__misen__"]["guided_choice"] == "pick"
+        assert result["after"] is True
+
+    async def test_two_guided_in_sequence(self):
+        @tool(name="a", description="A")
+        def a(input: dict) -> dict:
+            return {"from_a": True}
+
+        @tool(name="b", description="B")
+        def b(input: dict) -> dict:
+            return {"from_b": True}
+
+        pipeline = sequential(
+            guided(make_mock_llm(["a"]), "First", [a]),
+            guided(make_mock_llm(["b"]), "Second", [b]),
+        )
+        result = await pipeline.run({})
+        # Second guided overwrites __misen__.guided_choice
+        assert result["__misen__"]["guided_choice"] == "b"
+        assert result["from_a"] is True
+        assert result["from_b"] is True
+
+    async def test_free_meta_has_step_count(self):
+        @tool(name="inc", description="Inc")
+        def inc(input: dict) -> dict:
+            return {"value": input.get("value", 0) + 1}
+
+        responses = [
+            json.dumps({"tool": "inc", "input": {}}),
+            json.dumps({"tool": "inc", "input": {}}),
+            json.dumps({"done": True}),
+        ]
+        result = await free(make_mock_llm(responses), "Go", [inc], max_steps=10).run({})
+        assert result["__misen__"]["free_steps"] == 3
+        assert result["value"] == 2
 
 
 # ═══════════════════════════════════════════════════════════════

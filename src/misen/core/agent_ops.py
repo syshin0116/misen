@@ -52,7 +52,13 @@ class Guided(Block):
         )
         self.llm = llm
         self.prompt = prompt
-        self.options = {b.name: b for b in options}
+        self.options: dict[str, Block] = {}
+        for b in options:
+            if b.name in self.options:
+                raise ValueError(
+                    f"Guided: duplicate block name {b.name!r}. Each option must have a unique name."
+                )
+            self.options[b.name] = b
 
     async def execute(self, input: dict[str, Any]) -> dict[str, Any]:
         options_desc = "\n".join(
@@ -134,7 +140,13 @@ class Free(Block):
         )
         self.llm = llm
         self.prompt = prompt
-        self.tools = {b.name: b for b in tools}
+        self.tools: dict[str, Block] = {}
+        for b in tools:
+            if b.name in self.tools:
+                raise ValueError(
+                    f"Free: duplicate block name {b.name!r}. Each tool must have a unique name."
+                )
+            self.tools[b.name] = b
         self.max_steps = max_steps
 
     def _build_system_prompt(self) -> str:

@@ -49,6 +49,17 @@ class TestBranch:
         result = await b.run({"text": "hello"})
         assert result["text"] == "hello"
 
+    async def test_preserves_input_keys(self):
+        """Branch result must include original input keys, not just sub-block output."""
+
+        @tool(name="inc")
+        def inc(input: dict) -> dict:
+            return {"value": input["value"] + 1}
+
+        result = await branch(lambda d: True, inc).run({"value": 1, "extra": "keep"})
+        assert result["value"] == 2
+        assert result["extra"] == "keep"
+
     async def test_does_not_mutate_input(self):
         @tool(name="add")
         def add(input: dict) -> dict:
