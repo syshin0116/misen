@@ -43,6 +43,40 @@ class Sequential(Block):
             data.update(result)
         return data
 
+    def describe(self, indent: int = 0) -> str:
+        prefix = "  " * indent
+        connector = "├─ " if indent > 0 else ""
+        lines = [f"{prefix}{connector}Sequential"]
+        for block in self.blocks:
+            lines.append(block.describe(indent + 1))
+        return "\n".join(lines)
+
+    def to_mermaid(self) -> str:
+        lines = ["graph LR"]
+        counter = {"n": 0}
+        self._mermaid_build(lines, counter)
+        return "\n".join(lines)
+
+    def _mermaid_build(
+        self, lines: list[str], counter: dict[str, int]
+    ) -> tuple[str, str]:
+        prev_exit = None
+        first_entry = None
+        for block in self.blocks:
+            if hasattr(block, "_mermaid_build"):
+                entry, exit_ = block._mermaid_build(lines, counter)
+            else:
+                counter["n"] += 1
+                nid = f"N{counter['n']}"
+                lines.append(f'    {nid}["{block.name}"]')
+                entry, exit_ = nid, nid
+            if first_entry is None:
+                first_entry = entry
+            if prev_exit is not None:
+                lines.append(f"    {prev_exit} --> {entry}")
+            prev_exit = exit_
+        return first_entry or "", prev_exit or ""
+
 
 class Parallel(Block):
     """Run blocks concurrently, merge outputs.
@@ -96,6 +130,35 @@ class Parallel(Block):
 
         return merged
 
+    def describe(self, indent: int = 0) -> str:
+        prefix = "  " * indent
+        connector = "├─ " if indent > 0 else ""
+        lines = [f"{prefix}{connector}Parallel"]
+        for block in self.blocks:
+            lines.append(block.describe(indent + 1))
+        return "\n".join(lines)
+
+    def _mermaid_build(
+        self, lines: list[str], counter: dict[str, int]
+    ) -> tuple[str, str]:
+        counter["n"] += 1
+        fork_id = f"N{counter['n']}"
+        lines.append(f'    {fork_id}{{"Parallel"}}')
+        counter["n"] += 1
+        join_id = f"N{counter['n']}"
+        lines.append(f'    {join_id}(("join"))')
+        for block in self.blocks:
+            if hasattr(block, "_mermaid_build"):
+                entry, exit_ = block._mermaid_build(lines, counter)
+            else:
+                counter["n"] += 1
+                nid = f"N{counter['n']}"
+                lines.append(f'    {nid}["{block.name}"]')
+                entry, exit_ = nid, nid
+            lines.append(f"    {fork_id} --> {entry}")
+            lines.append(f"    {exit_} --> {join_id}")
+        return fork_id, join_id
+
 
 class Branch(Block):
     """Pick one of two blocks based on a condition.
@@ -132,6 +195,47 @@ class Branch(Block):
             result = await self.if_false.run(dict(input))
             data.update(result)
         return data
+
+    def describe(self, indent: int = 0) -> str:
+        prefix = "  " * indent
+        connector = "├─ " if indent > 0 else ""
+        lines = [f"{prefix}{connector}Branch"]
+        lines.append(f"{'  ' * (indent + 1)}├─ if_true: {self.if_true.name}")
+        if self.if_false:
+            lines.append(f"{'  ' * (indent + 1)}├─ if_false: {self.if_false.name}")
+        return "\n".join(lines)
+
+    def _mermaid_build(
+        self, lines: list[str], counter: dict[str, int]
+    ) -> tuple[str, str]:
+        counter["n"] += 1
+        cond_id = f"N{counter['n']}"
+        lines.append(f'    {cond_id}{{"Branch"}}')
+        counter["n"] += 1
+        join_id = f"N{counter['n']}"
+        lines.append(f'    {join_id}(("join"))')
+        # if_true
+        if hasattr(self.if_true, "_mermaid_build"):
+            t_entry, t_exit = self.if_true._mermaid_build(lines, counter)
+        else:
+            counter["n"] += 1
+            t_entry = t_exit = f"N{counter['n']}"
+            lines.append(f'    {t_entry}["{self.if_true.name}"]')
+        lines.append(f"    {cond_id} -->|true| {t_entry}")
+        lines.append(f"    {t_exit} --> {join_id}")
+        # if_false
+        if self.if_false:
+            if hasattr(self.if_false, "_mermaid_build"):
+                f_entry, f_exit = self.if_false._mermaid_build(lines, counter)
+            else:
+                counter["n"] += 1
+                f_entry = f_exit = f"N{counter['n']}"
+                lines.append(f'    {f_entry}["{self.if_false.name}"]')
+            lines.append(f"    {cond_id} -->|false| {f_entry}")
+            lines.append(f"    {f_exit} --> {join_id}")
+        else:
+            lines.append(f"    {cond_id} -->|false| {join_id}")
+        return cond_id, join_id
 
 
 class Loop(Block):
@@ -173,6 +277,29 @@ class Loop(Block):
         raise LoopMaxIterationsError(
             f"Loop({self.block.name}) exceeded {self.max_iterations} iterations"
         )
+
+    def describe(self, indent: int = 0) -> str:
+        prefix = "  " * indent
+        connector = "├─ " if indent > 0 else ""
+        lines = [f"{prefix}{connector}Loop (max={self.max_iterations})"]
+        lines.append(self.block.describe(indent + 1))
+        return "\n".join(lines)
+
+    def _mermaid_build(
+        self, lines: list[str], counter: dict[str, int]
+    ) -> tuple[str, str]:
+        counter["n"] += 1
+        loop_id = f"N{counter['n']}"
+        lines.append(f'    {loop_id}[/"Loop (max={self.max_iterations})"/]')
+        if hasattr(self.block, "_mermaid_build"):
+            entry, exit_ = self.block._mermaid_build(lines, counter)
+        else:
+            counter["n"] += 1
+            entry = exit_ = f"N{counter['n']}"
+            lines.append(f'    {entry}["{self.block.name}"]')
+        lines.append(f"    {loop_id} --> {entry}")
+        lines.append(f"    {exit_} -->|until| {loop_id}")
+        return loop_id, loop_id
 
 
 class MapEach(Block):
@@ -222,6 +349,97 @@ class MapEach(Block):
         results = await asyncio.gather(*(run_one(el) for el in items))
         return {self.output_key: list(results)}
 
+    def describe(self, indent: int = 0) -> str:
+        prefix = "  " * indent
+        connector = "├─ " if indent > 0 else ""
+        lines = [f"{prefix}{connector}MapEach(over={self.over_key!r})"]
+        lines.append(self.block.describe(indent + 1))
+        return "\n".join(lines)
+
+    def _mermaid_build(
+        self, lines: list[str], counter: dict[str, int]
+    ) -> tuple[str, str]:
+        counter["n"] += 1
+        map_id = f"N{counter['n']}"
+        lines.append(f'    {map_id}[/"MapEach(over={self.over_key!r})"/]')
+        if hasattr(self.block, "_mermaid_build"):
+            entry, exit_ = self.block._mermaid_build(lines, counter)
+        else:
+            counter["n"] += 1
+            entry = exit_ = f"N{counter['n']}"
+            lines.append(f'    {entry}["{self.block.name}"]')
+        lines.append(f"    {map_id} --> {entry}")
+        lines.append(f"    {exit_} --> {map_id}")
+        return map_id, map_id
+
+
+class Retry(Block):
+    """Retry a block on failure with exponential backoff.
+
+    Args:
+        block: The block to retry.
+        max_retries: Maximum number of retry attempts (default 3).
+        backoff: Base delay in seconds between retries (default 1.0).
+        on_retry: Optional callback ``(attempt, error) -> None`` for logging.
+    """
+
+    def __init__(
+        self,
+        block: Block,
+        max_retries: int = 3,
+        backoff: float = 1.0,
+        *,
+        on_retry: Callable[[int, Exception], Any] | None = None,
+        name: str = "",
+        description: str = "",
+    ) -> None:
+        super().__init__(
+            name=name or f"Retry({block.name}, max={max_retries})",
+            description=description,
+        )
+        self.block = block
+        self.max_retries = max_retries
+        self.backoff = backoff
+        self.on_retry = on_retry
+
+    async def execute(self, input: dict[str, Any]) -> dict[str, Any]:
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                return await self.block.run(dict(input))
+            except Exception as exc:
+                last_error = exc
+                if attempt < self.max_retries:
+                    if self.on_retry:
+                        self.on_retry(attempt + 1, exc)
+                    await asyncio.sleep(self.backoff * (2**attempt))
+        raise BlockError(
+            f"Retry({self.block.name}) failed after {self.max_retries + 1} attempts: {last_error}"
+        ) from last_error
+
+    def describe(self, indent: int = 0) -> str:
+        prefix = "  " * indent
+        connector = "├─ " if indent > 0 else ""
+        lines = [f"{prefix}{connector}Retry (max={self.max_retries}, backoff={self.backoff}s)"]
+        lines.append(self.block.describe(indent + 1))
+        return "\n".join(lines)
+
+    def _mermaid_build(
+        self, lines: list[str], counter: dict[str, int]
+    ) -> tuple[str, str]:
+        counter["n"] += 1
+        retry_id = f"N{counter['n']}"
+        lines.append(f'    {retry_id}[/"Retry (max={self.max_retries})"/]')
+        if hasattr(self.block, "_mermaid_build"):
+            entry, exit_ = self.block._mermaid_build(lines, counter)
+        else:
+            counter["n"] += 1
+            entry = exit_ = f"N{counter['n']}"
+            lines.append(f'    {entry}["{self.block.name}"]')
+        lines.append(f"    {retry_id} --> {entry}")
+        lines.append(f"    {exit_} -->|fail| {retry_id}")
+        return retry_id, retry_id
+
 
 # ── convenience functions ────────────────────────────────────
 
@@ -263,3 +481,13 @@ def map_each(
 ) -> MapEach:
     """Create a MapEach block."""
     return MapEach(block, over_key, **kwargs)
+
+
+def retry(
+    block: Block,
+    max_retries: int = 3,
+    backoff: float = 1.0,
+    **kwargs: Any,
+) -> Retry:
+    """Create a Retry block."""
+    return Retry(block, max_retries, backoff, **kwargs)

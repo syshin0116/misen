@@ -112,6 +112,34 @@ class Guided(Block):
         meta["guided_choice"] = choice
         return {**result, "__misen__": meta}
 
+    def describe(self, indent: int = 0) -> str:
+        prefix = "  " * indent
+        connector = "├─ " if indent > 0 else ""
+        lines = [f"{prefix}{connector}Guided (LLM picks one)"]
+        for name, block in self.options.items():
+            lines.append(f"{'  ' * (indent + 1)}├─ {name}: {block.description or 'No description'}")
+        return "\n".join(lines)
+
+    def _mermaid_build(
+        self, lines: list[str], counter: dict[str, int]
+    ) -> tuple[str, str]:
+        counter["n"] += 1
+        llm_id = f"N{counter['n']}"
+        lines.append(f'    {llm_id}{{"Guided (LLM)"}}')
+        counter["n"] += 1
+        join_id = f"N{counter['n']}"
+        lines.append(f'    {join_id}(("join"))')
+        for name, block in self.options.items():
+            if hasattr(block, "_mermaid_build"):
+                entry, exit_ = block._mermaid_build(lines, counter)
+            else:
+                counter["n"] += 1
+                entry = exit_ = f"N{counter['n']}"
+                lines.append(f'    {entry}["{name}"]')
+            lines.append(f"    {llm_id} -.-> {entry}")
+            lines.append(f"    {exit_} --> {join_id}")
+        return llm_id, join_id
+
 
 # ── Free ────────────────────────────────────────────────────
 
@@ -238,6 +266,28 @@ class Free(Block):
         raise LoopMaxIterationsError(
             f"Free({self.name}) exceeded {self.max_steps} steps without finishing"
         )
+
+    def describe(self, indent: int = 0) -> str:
+        prefix = "  " * indent
+        connector = "├─ " if indent > 0 else ""
+        lines = [f"{prefix}{connector}Free (ReAct loop, max={self.max_steps})"]
+        for name, block in self.tools.items():
+            lines.append(f"{'  ' * (indent + 1)}├─ {name}: {block.description or 'No description'}")
+        return "\n".join(lines)
+
+    def _mermaid_build(
+        self, lines: list[str], counter: dict[str, int]
+    ) -> tuple[str, str]:
+        counter["n"] += 1
+        llm_id = f"N{counter['n']}"
+        lines.append(f'    {llm_id}[/"Free (ReAct, max={self.max_steps})"/]')
+        for name, _block in self.tools.items():
+            counter["n"] += 1
+            tool_id = f"N{counter['n']}"
+            lines.append(f'    {tool_id}["{name}"]')
+            lines.append(f"    {llm_id} -.-> {tool_id}")
+            lines.append(f"    {tool_id} -.-> {llm_id}")
+        return llm_id, llm_id
 
 
 # ── convenience functions ────────────────────────────────────
