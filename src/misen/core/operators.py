@@ -124,11 +124,14 @@ class Branch(Block):
         self.if_false = if_false
 
     async def execute(self, input: dict[str, Any]) -> dict[str, Any]:
+        data = dict(input)
         if await _call_predicate(self.condition, input):
-            return await self.if_true.run(dict(input))
+            result = await self.if_true.run(dict(input))
+            data.update(result)
         elif self.if_false is not None:
-            return await self.if_false.run(dict(input))
-        return dict(input)
+            result = await self.if_false.run(dict(input))
+            data.update(result)
+        return data
 
 
 class Loop(Block):
